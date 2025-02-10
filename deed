@@ -1,0 +1,270 @@
+#!/bin/bash
+
+# install: 
+#     chmod +x deed
+#     mv deed /usr/local/bin/deed
+
+EDITOR=${EDITOR:-notepad} # nvim, nano, notepad etc.
+TODO_DIR="${TODO_DIR:-$HOME}"
+
+TODO_FILE="${TODO_DIR}/todo.txt"
+DONE_FILE="${TODO_DIR}/done.${TODO_FILE##*.}"
+REPORT_FILE="${TODO_DIR}/report.${TODO_FILE##*.}"
+SOMEDAY_FILE="${TODO_DIR}/someday.${TODO_FILE##*.}"
+BACKLOG_File="${TODO_DIR}/backlog.${TODO_FILE##*.}"
+
+TODO_NOW_RULE=${TODO_NOW_RULE:-"@|\+|#"}
+
+# color
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+GREEN='\033[0;32m'
+BLACK='\033[0;30m'
+ORANGE='\033[0;33m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+LGRAY='\033[0;37m'
+DGRAY='\033[1;30m'
+LRED='\033[1;31m'
+LGREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+LBLUE='\033[1;34m'
+LPURPLE='\033[1;35m'
+LCYAN='\033[1;36m'
+WHITE='\033[1;37m'
+NO_C='\033[0m'
+
+# set color for each priority
+declare -A PRIOR_C
+PRIOR_C[A]="${RED}"
+PRIOR_C[B]="${YELLOW}"
+PRIOR_C[C]="${GREEN}"
+# PRIOR_C[D]="${LBLUE}"
+# PRIOR_C[E]="${PURPLE}"
+# PRIOR_C[F]=""
+# PRIOR_C[G]=""
+# PRIOR_C[H]=""
+# PRIOR_C[I]=""
+# PRIOR_C[J]=""
+# PRIOR_C[K]=""
+# PRIOR_C[L]=""
+# PRIOR_C[M]=""
+# PRIOR_C[N]=""
+# PRIOR_C[O]=""
+# PRIOR_C[P]=""
+# PRIOR_C[Q]=""
+# PRIOR_C[R]=""
+# PRIOR_C[S]=""
+# PRIOR_C[T]=""
+# PRIOR_C[U]=""
+# PRIOR_C[V]=""
+# PRIOR_C[W]=""
+# PRIOR_C[X]=""
+# PRIOR_C[Y]=""
+# PRIOR_C=""
+NO_PRIOR_C="${NO_C}"
+DONE_C="${DGRAY}"
+
+text=""
+will_list=0
+verbose=false
+list_files=()
+list_files+=("${TODO_FILE}")
+grep_word_rule='.*'
+
+if [ $# -eq 0 ]; then 
+    will_list=1
+fi
+
+# too lazy to do checking
+while [[ $# -gt 0 ]]; do
+    case $1 in 
+        -now)
+            action='filter'
+            will_list=1
+            grep_word_rule="${TODO_NOW_RULE}"
+            shift
+            ;;
+        -app)
+            action='append'
+            target_index=$2
+            text="$3"
+            shift
+            shift
+            shift
+            ;;
+        -l)
+            will_list=1
+            list_files+=( "${DONE_FILE}" )
+            if [ -f ${TODO_DIR}/$2.${TODO_FILE##*.} ]; then
+                list_files=(${TODO_DIR}/$2.${TODO_FILE##*.})
+                shift
+            fi
+            shift
+            ;;
+        -a)
+            action='add'
+            text="$2"
+            shift
+            shift
+            ;;
+        -v)
+            verbose=true
+            shift
+            ;;
+        -t)
+            if [ -f ${TODO_DIR}/$2.${TODO_FILE##*.} ]; then
+                target_file="${TODO_DIR}/$2.${TODO_FILE##*.}"
+                shift
+            fi
+            shift
+            ;;
+        -f)
+            action='filter'
+            will_list=1
+            grep_word_rule=$2
+            shift
+            shift
+            ;;
+        -h|--help)
+            echo "send help"
+            exit 0
+            ;;
+        -o) # open
+            cd ${TODO_DIR} || exit
+            [ -z $2 ] && ${EDITOR} ${TODO_FILE} && exit 0
+            ${EDITOR} $2.${TODO_FILE##*.} && exit 0
+            ;;
+        -c) # clean
+            action='archive'
+            break
+            ;;
+        -r)
+            action='report'
+            break
+            ;;
+        -p)
+            action='priority'
+            target_index=$2
+            [ -n $3 ] && add_prior_level=$(echo $3 | tr '[:lower:]' '[:upper:]')
+            break
+            ;;
+        -d)
+            action='done'
+            target_index=$2
+            break
+            ;;
+        -del)
+            action='remove'
+            target_index="$2"
+            break
+            ;;
+        -mov)
+            action='move'
+            target_index="$2"
+            [ ! -f ${TODO_DIR}/$3.${TODO_FILE##*.} ] && exit 1 
+            desti_target_file="${TODO_DIR}/$3.${TODO_FILE##*.}"
+            break 
+            ;;
+        *)
+            action='add'
+            text="$*"
+            break
+            ;;
+    esac
+done
+
+today="$(date +%Y-%m-%d)"
+target_file=${target_file:-${TODO_FILE}} # default target is ${TODO_FILE}
+
+# first checking if it was the expanded index, if yes do below, if not skip
+#   translate value of $target_index
+#   'i..j' to (i i+1 i+2 ... j-2 j-1 j) and sort it too
+#   ex. (1,3..8,4) -> (1,3,4,5,6,7,8)
+if [ -z "${target_index##*[!0-9]*}" ]; then # check if it isn't normal integer
+    target_indices_raw="${target_index}"
+    target_indices=(${target_indices_raw//,/ })
+    for index in ${target_indices[@]}; do
+        if [[ ${index} =~ ^[0-9]+..[0-9]+$ ]]; then # find i..j pattern
+            match=${BASH_REMATCH[0]}
+            start_i=$(echo ${match} | cut -d '.' -f 1)
+            end_i=$(echo ${match} | cut -d '.' -f 3)
+            for ((i="${start_i}"; i<="${end_i}"; i++)); do # extract index
+                target_indices=( ${target_indices[@]} $i)
+            done
+        fi
+    done
+    target_indices=( "${target_indices[@]}" "${to_be_add_index}")
+    target_indices=("${target_indices[@]/[0-9]*..[0-9]*/}")
+    IFS=$'\n' target_indices=($(sort -u -V <<<"${target_indices[*]}")); unset IFS
+else
+    target_indices=($target_index)
+fi
+
+# action that contain target_index are put into loop
+for target_index in ${target_indices[@]} ; do
+    target_index=$((${target_index} - ${offset:-0}))
+    case $action in
+        append)
+            sed -i.bak "${target_index}s/$/ ${text}/" ${target_file}
+            ;;
+        done)
+            sed -i "${target_index}s/^([a-zA-Z]) //" ${target_file}
+            sed -i.bak "${target_index}s/^/x ${today} /" ${target_file}
+            ;;
+        priority)
+            sed -i "${target_index}s/^([a-zA-Z]) //" ${target_file} # delete old prior
+            [ -n "${add_prior_level}" ] && sed -i.bak "${target_index}s/^/\(${add_prior_level}\) /" ${target_file} # add new prior
+            ;;
+        remove)
+            sed -i.bak "${target_index}d" ${target_file} 
+            offset=$((${offset}+1))
+            ;;
+        move)
+            target_index_text="$(sed -n "${target_index}p" ${target_file})"
+            echo ${target_index_text} >> ${desti_target_file}
+            offset=$((${offset}+1))
+            ;;
+    esac
+done
+
+case $action in
+    add)
+        cp ${target_file} ${target_file}.bak
+        echo "${today} ${text}" >> "${target_file}"
+        ;;
+    report)
+            not_done="$(grep -E '^[^x]' "${TODO_FILE}" | wc -l)"
+        done="$(grep -E '^x' "${TODO_FILE}" | wc -l "${DONE_FILE}" | cut -d ' ' -f -1)"
+        echo "$(date +%Y-%m-%dT%H:%M:%S) ${not_done} ${done}" >> "${REPORT_FILE}"
+        ;;
+    archive)
+        sed -n "/^x /p" ${target_file} >> ${DONE_FILE}
+        sed -i.bak "/^x /d" ${target_file}
+        sort -o ${DONE_FILE}{,}
+        ;;
+esac
+
+sort -o ${target_file}{,}
+
+if [ ${will_list} -eq 1 ]; then
+    line_number=1
+    for list_file in ${list_files[@]} ; do
+        while IFS= read -r line; do
+            color=${NO_PRIOR_C}
+            prior_regex='\([a-zA-Z]\)'
+            valid_date_regex="[0-9]{4}-(((0[13578]|(10|12))-(0[1-9]|[1-2][0-9]|3[0-1]))|(02-(0[1-9]|[1-2][0-9]))|((0[469]|11)-(0[1-9]|[1-2][0-9]|30)))"
+            if [[ ${line} =~ ^$prior_regex ]]; then
+                prior="${BASH_REMATCH[0]:1:1}"
+                color=${PRIOR_C[$prior]}
+            elif [[ ${line} =~ ^[xX] ]]; then
+                color=${DONE_C}
+            fi
+            # color by priority
+            if [[ ${line} =~ ${grep_word_rule} ]]; then 
+                echo -e "$line_number:${color}$line${NO_C}"
+            fi
+            line_number=$(( line_number + 1 ))
+        done < ${list_file}
+    done
+fi
