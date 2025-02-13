@@ -2,7 +2,6 @@
 
 # deed: managing your todo in todo.txt format
 # author: @ne1nene (Soulmine)
-# TODO add verbose msg
 # TODO add readme.md
 
 print_help () {
@@ -253,6 +252,7 @@ done
 today="$(date +%Y-%m-%d)"
 target_file=${target_file:-${TODO_FILE}} # default target_file is ${TODO_FILE}
 
+$verbose && echo "deed: index before convertion ${target_index}"
 # translate value of $target_index
 # 'i..j' to (i i+1 i+2 ... j-2 j-1 j) and sort it too
 # ex. (1,3..8,4) -> (1,3,4,5,6,7,8)
@@ -276,29 +276,37 @@ else
     target_indices=($target_index)
 fi
 
+$verbose && echo "deed: index after convertion ${target_indices[@]}"
+$verbose && echo "deed: now performing ${action}"
+
 # action that contain target_index are put in the loop
 for target_index in ${target_indices[@]} ; do
     target_index=$((${target_index} - ${offset:-0}))
     case $action in
         append)
             sed -i.bak "${target_index}s/$/ ${text}/" ${target_file}
+            $verbose && echo "deed: append ${text} to ${target_file} at index ${target_index}"
             ;;
         done)
-            sed -i "${target_index}s/^([a-zA-Z]) //" ${target_file}
+            sed -i "${target_index}s/^([a-zA-Z]) //" ${target_file} # remove priority
             sed -i.bak "${target_index}s/^/x ${today} /" ${target_file}
+            $verbose && echo "deed: mark a task in ${target_file} at index ${target_index} as done"
             ;;
         priority)
             sed -i "${target_index}s/^([a-zA-Z]) //" ${target_file} # delete old prior
             [ -n "${add_prior_level}" ] && sed -i.bak "${target_index}s/^/\(${add_prior_level}\) /" ${target_file} # add new prior
+            $verbose && echo "deed: mark a task in ${target_file} at index ${target_index} with priority of ${add_prior_level}"
             ;;
         remove)
             sed -i.bak "${target_index}d" ${target_file} 
             offset=$((${offset}+1))
+            $verbose && echo "deed: delete a task in ${target_file} at index ${target_index}"
             ;;
         move)
             target_index_text="$(sed -n "${target_index}p" ${target_file})"
             echo ${target_index_text} >> ${desti_target_file}
             offset=$((${offset}+1))
+            $verbose && echo "deed: move a task in ${target_file} at index ${target_index} to ${desti_target_file}"
             ;;
     esac
 done
@@ -308,16 +316,19 @@ case $action in
     add)
         cp ${target_file} ${target_file}.bak
         echo "${today} ${text}" >> "${target_file}"
+        $verbose && echo "deed: add task ${text} to ${target_file}"
         ;;
     report)
-            not_done="$(grep -E '^[^x]' "${TODO_FILE}" | wc -l)"
+        not_done="$(grep -E '^[^x]' "${TODO_FILE}" | wc -l)"
         done="$(grep -E '^x' "${TODO_FILE}" | wc -l "${DONE_FILE}" | cut -d ' ' -f -1)"
         echo "$(date +%Y-%m-%dT%H:%M:%S) ${not_done} ${done}" >> "${REPORT_FILE}"
+        $verbose && echo "deed: report task from ${TODO_FILE} and ${DONE_FILE} to ${REPORT_FILE}"
         ;;
     archive)
         sed -n "/^x /p" ${target_file} >> ${DONE_FILE}
         sed -i.bak "/^x /d" ${target_file}
         sort -o ${DONE_FILE}{,}
+        $verbose && echo "deed: clean done task from ${target_file} to ${DONE_FILE}"
         ;;
 esac
 
