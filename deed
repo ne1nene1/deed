@@ -1,18 +1,82 @@
 #!/bin/bash
 
-# install: 
-#     chmod +x deed
-#     mv deed /usr/local/bin/deed
+# deed: managing your todo in todo.txt format
+# author: @ne1nene (Soulmine)
+# TODO add verbose msg
+# TODO add readme.md
+
+print_help () {
+    echo "deed: managing your todo in todo.txt format"
+    echo "usage: deed [OPTION] [ACTION] [TARGET_INDEX] [-t] [TARGET_FILE]"
+    echo "example:"
+    echo "  \`deed\`"
+    echo "  \`deed do the dishes\`"
+    echo "  \`deed -a \"do the dishes\"\`"
+    echo ""
+    echo "variable:"
+    echo "  \$TODO_DIR                             directory where all file related to your todo (todo, done, report,"
+    echo "                                        someday, backlog) will reside"
+    echo ""
+    echo "option:"
+    echo "  -l, --list LIST_FILE                   when on, will list DONE_FILE together with TODO_FILE. if LIST_FILE"
+    echo "                                         is given and is a file in TODO_DIR, deed will only list tasks in LIST_FILE"
+    echo "  -v, --verbose                          when on, deed will print more log stdout"
+    echo "  -h, --help                             print this message and exit the script"
+    echo ""
+    echo "action:"
+    echo "  -o, --open                             open TARGET_FILE in your editor"
+    echo "  -a, --add TASK                         add a TASK to TARGET_FILE"
+    echo "  -d, --done INDEX                       mark TASK with INDEX index a done in TARGET_FILE"
+    echo "  -c, --clean                            move all done tasks to DONE_FILE"
+    echo "  -p, --prior PRIOR                      mark TASK with INDEX index with priority of PRIOR"
+    echo "  -t, --target TARGET_FILE               change TARGET_FILE (default is TODO_FILE)"
+    echo "  -r, --report                           log a report of complete and incomplete task in TODO_FILE and DONE_FILE to REPORT_FILE"
+    echo "  -f, --filter REGEX                     only print out task that match the given regex REGEX in TARGET_FILE"
+    echo "  -n, --now                              filter task in TARGET_FILE with predefined REGEX inside the script"
+    echo "  -del, --delete INDEX                   delete task with INDEX index in TARGET_FILE"
+    echo "  -app, --append INDEX TEXT              append TEXT to task with INDEX index in the TARGET_FILE "
+    echo "  -mov, --move INDEX DESTI_TARGET_FILE   move task with INDEX index from TARGET_FILE to DESTI_TARGET_FILE"
+    echo ""
+}
+
+check_dir_usuable() {
+    if [ ! -d "$1" ]; then
+        echo "deed: directory $1 does not exist"
+        mkdir "$1"
+        echo "deed: directory $1 has been created"
+    fi
+}
+
+check_file_usuable() {
+    if [ ! -e "$1" ]; then
+        echo "deed: file $1 does not exist."
+        touch "$1"
+        echo "deed: file $1 has been created"
+    elif [ ! -f "$1" ]; then
+        echo "error: file $1 exists but is not a regular file."
+        exit 1
+    elif [ ! -r "$1" ]; then 
+        echo "error: file $1 exists but is not readable."
+        exit 1
+    elif [ ! -w "$1" ]; then 
+        echo "error: file exists but is not writable."
+        exit 1
+    fi
+}
 
 EDITOR=${EDITOR:-notepad} # nvim, nano, notepad etc.
-TODO_DIR="${TODO_DIR:-$HOME}"
 
+# where all todo.txt file will be stored
+TODO_DIR="${TODO_DIR:-$HOME}"
+# defined todo.txt file
 TODO_FILE="${TODO_DIR}/todo.txt"
+# other optional file, derived TODO_FILE's file extension
 DONE_FILE="${TODO_DIR}/done.${TODO_FILE##*.}"
 REPORT_FILE="${TODO_DIR}/report.${TODO_FILE##*.}"
 SOMEDAY_FILE="${TODO_DIR}/someday.${TODO_FILE##*.}"
 BACKLOG_File="${TODO_DIR}/backlog.${TODO_FILE##*.}"
 
+# the now rule, replace it with keyword that you frequently query
 TODO_NOW_RULE=${TODO_NOW_RULE:-"@|\+|#"}
 
 # color
@@ -65,6 +129,7 @@ PRIOR_C[C]="${GREEN}"
 NO_PRIOR_C="${NO_C}"
 DONE_C="${DGRAY}"
 
+# initial flag
 text=""
 will_list=0
 verbose=false
@@ -72,6 +137,17 @@ list_files=()
 list_files+=("${TODO_FILE}")
 grep_word_rule='.*'
 
+# perform various checking
+check_dir_usuable "${TODO_DIR}"
+
+check_file_usuable "${DONE_FILE}"
+check_file_usuable "${TODO_FILE}"
+check_file_usuable "${REPORT_FILE}"
+check_file_usuable "${SOMEDAY_FILE}"
+check_file_usuable "${BACKLOG_File}"
+
+
+# if no arg, list todo
 if [ $# -eq 0 ]; then 
     will_list=1
 fi
@@ -79,13 +155,13 @@ fi
 # too lazy to do checking
 while [[ $# -gt 0 ]]; do
     case $1 in 
-        -now)
+        -n|--now)
             action='filter'
             will_list=1
             grep_word_rule="${TODO_NOW_RULE}"
             shift
             ;;
-        -app)
+        -app|--append)
             action='append'
             target_index=$2
             text="$3"
@@ -93,7 +169,7 @@ while [[ $# -gt 0 ]]; do
             shift
             shift
             ;;
-        -l)
+        -l|--list)
             will_list=1
             list_files+=( "${DONE_FILE}" )
             if [ -f ${TODO_DIR}/$2.${TODO_FILE##*.} ]; then
@@ -102,24 +178,24 @@ while [[ $# -gt 0 ]]; do
             fi
             shift
             ;;
-        -a)
+        -a|--add)
             action='add'
             text="$2"
             shift
             shift
             ;;
-        -v)
+        -v|--verbose)
             verbose=true
             shift
             ;;
-        -t)
+        -t|--target)
             if [ -f ${TODO_DIR}/$2.${TODO_FILE##*.} ]; then
                 target_file="${TODO_DIR}/$2.${TODO_FILE##*.}"
                 shift
             fi
             shift
             ;;
-        -f)
+        -f|--filter)
             action='filter'
             will_list=1
             grep_word_rule=$2
@@ -127,46 +203,46 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
-            echo "send help"
+            print_help
             exit 0
             ;;
-        -o) # open
+        -o|--open)
             cd ${TODO_DIR} || exit
-            [ -z $2 ] && ${EDITOR} ${TODO_FILE} && exit 0
-            ${EDITOR} $2.${TODO_FILE##*.} && exit 0
+            [ -z $2 ] && ${EDITOR} ${TODO_FILE} && exit 0 # open todo by default
+            ${EDITOR} $2.${TODO_FILE##*.} && exit 0 # otherwise open the choice
             ;;
-        -c) # clean
+        -c|--clean) # clean
             action='archive'
             break
             ;;
-        -r)
+        -r|--report)
             action='report'
             break
             ;;
-        -p)
+        -p|--prior)
             action='priority'
             target_index=$2
             [ -n $3 ] && add_prior_level=$(echo $3 | tr '[:lower:]' '[:upper:]')
             break
             ;;
-        -d)
+        -d|--done)
             action='done'
             target_index=$2
             break
             ;;
-        -del)
+        -del|--delete)
             action='remove'
             target_index="$2"
             break
             ;;
-        -mov)
+        -mov|--move)
             action='move'
             target_index="$2"
             [ ! -f ${TODO_DIR}/$3.${TODO_FILE##*.} ] && exit 1 
             desti_target_file="${TODO_DIR}/$3.${TODO_FILE##*.}"
             break 
             ;;
-        *)
+        *) # catch all
             action='add'
             text="$*"
             break
@@ -175,12 +251,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 today="$(date +%Y-%m-%d)"
-target_file=${target_file:-${TODO_FILE}} # default target is ${TODO_FILE}
+target_file=${target_file:-${TODO_FILE}} # default target_file is ${TODO_FILE}
 
-# first checking if it was the expanded index, if yes do below, if not skip
-#   translate value of $target_index
-#   'i..j' to (i i+1 i+2 ... j-2 j-1 j) and sort it too
-#   ex. (1,3..8,4) -> (1,3,4,5,6,7,8)
+# translate value of $target_index
+# 'i..j' to (i i+1 i+2 ... j-2 j-1 j) and sort it too
+# ex. (1,3..8,4) -> (1,3,4,5,6,7,8)
 if [ -z "${target_index##*[!0-9]*}" ]; then # check if it isn't normal integer
     target_indices_raw="${target_index}"
     target_indices=(${target_indices_raw//,/ })
@@ -201,7 +276,7 @@ else
     target_indices=($target_index)
 fi
 
-# action that contain target_index are put into loop
+# action that contain target_index are put in the loop
 for target_index in ${target_indices[@]} ; do
     target_index=$((${target_index} - ${offset:-0}))
     case $action in
@@ -228,6 +303,7 @@ for target_index in ${target_indices[@]} ; do
     esac
 done
 
+# action that doesn't have target_index
 case $action in
     add)
         cp ${target_file} ${target_file}.bak
@@ -247,6 +323,7 @@ esac
 
 sort -o ${target_file}{,}
 
+# list todo
 if [ ${will_list} -eq 1 ]; then
     line_number=1
     for list_file in ${list_files[@]} ; do
@@ -260,7 +337,7 @@ if [ ${will_list} -eq 1 ]; then
             elif [[ ${line} =~ ^[xX] ]]; then
                 color=${DONE_C}
             fi
-            # color by priority
+            # filter first then print output with color by priority
             if [[ ${line} =~ ${grep_word_rule} ]]; then 
                 echo -e "$line_number:${color}$line${NO_C}"
             fi
