@@ -47,20 +47,20 @@ deed -l                                # list task(s) in both TODO_FILE and DONE
 deed -l someday                        # list only task(s) from SOMEDAY_FILE
 deed -l FILE                           # list only task(s) from FILE
 ```
-add TASK to TODO_FILE
+add task to TODO_FILE
 ```shell
 deed -a TASK
 deed TASK                              # -a,--add can be omitted
 ```
-mark TASK at index INDEX as done
+mark task at index INDEX as done
 ```shell
 deed -d INDEX
 ```
-mark TASK at index INDEX with priority of PRIOR
+mark task at index INDEX with priority of PRIOR
 ```shell
 deed -p INDEX PRIOR
 deed -p 1 A
-deed -p 1 a                            # PRIOR could be either lower or upper case
+deed -p 1 a                            # PRIOR could be either in lower or upper case
 ```
 append TEXT to task at index INDEX
 ```shell
