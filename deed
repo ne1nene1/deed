@@ -2,7 +2,6 @@
 
 # deed: managing your todo in todo.txt format
 # author: @ne1nene (Soulmine)
-# TODO add readme.md
 
 print_help () {
     echo "deed: managing your todo in todo.txt format"
